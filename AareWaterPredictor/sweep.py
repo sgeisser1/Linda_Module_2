@@ -54,44 +54,48 @@ sweep_config = {
 }
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Run or resume a W&B sweep.")
     parser.add_argument('--project', type=str, default="aare-predictor", help="W&B project name.")
-    parser.add_argument('--count', type=int, default=50, help="Number of runs in the sweep.")
+    parser.add_argument('--count', type=int, default=50, help="Number of runs to execute in this agent.")
+    parser.add_argument('--sweep_id', type=str, default=None, help="Optional: ID of an existing sweep to resume.")
+    
     args = parser.parse_args()
 
-    print(f"[*] Starting sweep on project '{args.project}' for {args.count} runs.")
-    sweep_id = wandb.sweep(sweep_config, project=args.project)
+    # If a sweep_id is provided, use it. Otherwise, create a new sweep.
+    if args.sweep_id:
+        sweep_id = args.sweep_id
+        print(f"[*] Resuming sweep with ID '{sweep_id}' on project '{args.project}'.")
+    else:
+        print(f"[*] Starting a new sweep on project '{args.project}'.")
+        sweep_id = wandb.sweep(sweep_config, project=args.project)
+        print(f"[*] New sweep created with ID: {sweep_id}")
+        print(f"[*] To resume this sweep later, run: python {__file__} --sweep_id {sweep_id}")
 
     def train_with_sweep():
-        # Initialize wandb for the agent run. This populates wandb.config.
         run = wandb.init()
         
-        # --- LOGIC TO PREVENT WASTED RUNS ---
-        # If the agent selects fft_window_size=0, the other FFT params are irrelevant.
-        # We manually update the config to nullify them. This ensures that W&B's
-        # backend will correctly identify these runs as having identical parameters.
         if wandb.config.fft_window_size == 0:
             wandb.config.update({
                 'n_top_freqs': None,
                 'fft_cutoff_freq': None
             }, allow_val_change=True)
 
-        # Fixed parameters for all sweep runs
         config = {
-            'debug': False,
+            'debug': True,
             'seed': 42,
-            'epochs': 15,
+            'epochs': 25,
             'patience': 5
         }
         
-        # The run_pipeline will use wandb.config, which now includes our manual cleanup.
         set_seeds(config['seed'])
         run_pipeline(config)
         
         run.finish()
 
     os.makedirs("models", exist_ok=True)
-    wandb.agent(sweep_id, function=train_with_sweep, count=args.count)
+    
+    # The agent will now run on either the new or the existing sweep_id
+    wandb.agent(sweep_id, function=train_with_sweep, count=args.count, project=args.project)
 
 if __name__ == '__main__':
     main()

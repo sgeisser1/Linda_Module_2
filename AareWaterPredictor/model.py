@@ -34,7 +34,7 @@ def train_model(model, train_loader, val_loader, config, device):
     best_val_loss = float('inf')
     epochs_no_improve = 0
     samples_seen = 0
-    EPOCH_TIMEOUT_SECONDS = 600 # 10 minutes
+    EPOCH_TIMEOUT_SECONDS = 150 # 2.5 minutes
 
     epoch_pbar = tqdm(range(config['epochs']), desc="Epochs")
 
