@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import wandb
-from sklearn.model_selection import KFold
 from tqdm.auto import tqdm
 
 from data import get_dataloaders
@@ -16,10 +15,14 @@ def set_seeds(seed=42):
 
 class LSTMModel(nn.Module):
     """LSTM model for time series prediction."""
-    def __init__(self, input_size=1, hidden_layer_size=100, num_layers=2, output_size=1, dropout=0.2):
+    # FIX: Added 'input_size' to the constructor
+    def __init__(self, input_size, hidden_layer_size=100, num_layers=2, output_size=1, dropout=0.2):
         super().__init__()
         self.hidden_layer_size = hidden_layer_size
-        self.lstm = nn.LSTM(input_size, hidden_layer_size, num_layers, dropout=dropout, batch_first=True)
+        
+        lstm_dropout = dropout if num_layers > 1 else 0
+        
+        self.lstm = nn.LSTM(input_size, hidden_layer_size, num_layers, dropout=lstm_dropout, batch_first=True)
         self.linear = nn.Linear(hidden_layer_size, output_size)
 
     def forward(self, input_seq):
@@ -27,14 +30,14 @@ class LSTMModel(nn.Module):
         predictions = self.linear(lstm_out[:, -1, :])
         return predictions
 
-def train_model(model, train_loader, val_loader, config, start_samples=0):
+def train_model(model, train_loader, val_loader, config):
     """Trains the LSTM model with sample-based W&B logging."""
     loss_function = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate'])
     
     best_val_loss = float('inf')
     epochs_no_improve = 0
-    samples_seen = start_samples
+    samples_seen = 0
 
     epoch_pbar = tqdm(range(config['epochs']), desc="Epochs")
 
@@ -43,7 +46,7 @@ def train_model(model, train_loader, val_loader, config, start_samples=0):
         epoch_train_loss = 0
         train_pbar = tqdm(train_loader, desc=f"Training Epoch {epoch+1}", leave=False)
         for seq, labels in train_pbar:
-            samples_seen += len(seq) # Increment by batch size
+            samples_seen += len(seq)
             
             optimizer.zero_grad()
             y_pred = model(seq)
@@ -83,6 +86,8 @@ def train_model(model, train_loader, val_loader, config, start_samples=0):
         if epoch_val_loss < best_val_loss:
             best_val_loss = epoch_val_loss
             epochs_no_improve = 0
+            if wandb.run:
+                torch.save(model.state_dict(), f"models/best_{wandb.run.name}.pth")
         else:
             epochs_no_improve += 1
 
@@ -90,31 +95,4 @@ def train_model(model, train_loader, val_loader, config, start_samples=0):
             print(f"\nEarly stopping at epoch {epoch+1}!")
             break
             
-    return best_val_loss, samples_seen
-
-def cross_validate(grouped_data, train_val_stations, config):
-    """Performs k-fold cross-validation, returning mean loss and total samples seen."""
-    kf = KFold(n_splits=config['n_splits'], shuffle=True, random_state=config['seed'])
-    cv_scores = []
-    current_samples_seen = 0
-
-    for fold, (train_idx, val_idx) in enumerate(kf.split(train_val_stations)):
-        print(f"\n--- Fold {fold+1}/{config['n_splits']} ---")
-        train_stations = train_val_stations[train_idx]
-        val_stations = train_val_stations[val_idx]
-
-        train_loader, val_loader, _ = get_dataloaders(grouped_data, train_stations, val_stations, [], 
-                                                      batch_size=config['batch_size'], 
-                                                      sequence_length=config['sequence_length'])
-        
-        model = LSTMModel(num_layers=config['num_layers'], dropout=config['dropout'])
-        wandb.watch(model, log='all', log_freq=100)
-        
-        val_loss, samples_done = train_model(model, train_loader, val_loader, config, start_samples=current_samples_seen)
-        current_samples_seen = samples_done
-        
-        cv_scores.append(val_loss)
-        wandb.unwatch(model)
-
-    wandb.log({"mean_cv_loss": np.mean(cv_scores)}, step=current_samples_seen)
-    return np.mean(cv_scores), current_samples_seen
+    return best_val_loss
