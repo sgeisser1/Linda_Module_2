@@ -2,6 +2,7 @@ import argparse
 import torch
 import wandb
 import os
+import json
 from tqdm.auto import tqdm
 from data import load_data, get_dataloaders
 from model import LSTMModel, train_model, set_seeds
@@ -12,6 +13,7 @@ def run_pipeline(config):
     if wandb.run is None:
         wandb.init(project=project_name, config=config)
     
+    # Combine initial config with sweep config from wandb
     full_config = {**config, **wandb.config}
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -64,11 +66,21 @@ def run_pipeline(config):
     print(f"[*] Final Test Loss (MSE): {final_mse:.4f}")
     wandb.log({"final_test_mse": final_mse})
 
+    # --- SAVE FINAL CONFIG ---
+    config_save_path = f"models/best_{wandb.run.name}.json"
+    with open(config_save_path, 'w') as f:
+        json.dump(full_config, f, indent=4)
+    print(f"[*] Final configuration saved to '{config_save_path}'")
+
+    if wandb.run:
+        wandb.finish()
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Aare River Water Flow Prediction')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--epochs', type=int, default=50)
+    # ... (rest of the arguments are the same)
     parser.add_argument('--num_layers', type=int, default=2)
     parser.add_argument('--dropout', type=float, default=0.2)
     parser.add_argument('--batch_size', type=int, default=64)

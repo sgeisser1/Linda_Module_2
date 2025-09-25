@@ -4,3 +4,5 @@ torch
 wandb
 scikit-learn
 tqdm
+matplotlib
+seaborn
