@@ -55,7 +55,7 @@ sweep_config = {
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--project', type=str, default="aare-predictor-debug", help="W&B project name.")
+    parser.add_argument('--project', type=str, default="aare-predictor", help="W&B project name.")
     parser.add_argument('--count', type=int, default=50, help="Number of runs in the sweep.")
     args = parser.parse_args()
 
@@ -78,7 +78,7 @@ def main():
 
         # Fixed parameters for all sweep runs
         config = {
-            'debug': True,
+            'debug': False,
             'seed': 42,
             'epochs': 15,
             'patience': 5
